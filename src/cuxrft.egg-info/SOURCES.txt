@@ -1,0 +1,9 @@
+LICENSE
+pyproject.toml
+src/cuxrft/__init__.py
+src/cuxrft/xarray.py
+src/cuxrft/xr_controller_fft.py
+src/cuxrft.egg-info/PKG-INFO
+src/cuxrft.egg-info/SOURCES.txt
+src/cuxrft.egg-info/dependency_links.txt
+src/cuxrft.egg-info/top_level.txt
