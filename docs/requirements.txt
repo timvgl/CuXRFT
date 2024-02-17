@@ -1,5 +1,5 @@
 setuptools>=61.0
-xarray>=2023.9.0
+xarray>=2023.1.0
 numpy>=1.26.0
 dask>=2023.9.3
 cupy>=12.2.0
