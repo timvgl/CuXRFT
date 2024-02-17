@@ -1,3 +1,5 @@
+.. image:: cuxrft.png
+   :width: 400
 Usage
 =====
 
