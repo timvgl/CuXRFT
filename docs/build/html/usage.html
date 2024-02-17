@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html lang="python" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Usage &#8212; cuxrft 15/02/2024 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=61cd365c" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=12dfc556" />
+    <script src="_static/documentation_options.js?v=1b3148c9"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Welcome to cuxrft&#39;s documentation!" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="usage">
+<h1>Usage<a class="headerlink" href="#usage" title="Link to this heading">¶</a></h1>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<p>To use cuxrft, first install it using pip (via terminal):</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>pip<span class="w"> </span>install<span class="w"> </span>cuxrft
+</pre></div>
+</div>
+<p>Please note, that cuxrft is not yet available via conda/Anaconda.</p>
+</section>
+<section id="basics-and-scope">
+<h2>Basics and Scope<a class="headerlink" href="#basics-and-scope" title="Link to this heading">¶</a></h2>
+<p>The package performs fast fourier transformations on graphics cards making use of cuda.
+Therefor the data will be chunked, according to the maximal numpy array size that each graphic card (if multiple are available) can handle.
+Making use of a recursive algorithm the computation of the FFT is going to be prepared in a delayed dask.array.
+This allows each chunk to be computed on a different graphic card, for speeding up the calculations.
+If only one graphic card is available, all chunks are going to be computed in a row.</p>
+<p>For use of xarray see the well maintained <a class="reference external" href="https://docs.xarray.dev/en/stable/user-guide/index.html">xarray documentation</a>.</p>
+</section>
+</section>
+<section id="tutorial">
+<h1>Tutorial<a class="headerlink" href="#tutorial" title="Link to this heading">¶</a></h1>
+<section id="importing-and-making-use-of-definitions">
+<h2>Importing and making use of definitions<a class="headerlink" href="#importing-and-making-use-of-definitions" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">cuxrft</span> <span class="kn">import</span> <span class="n">fft_cellwise</span><span class="p">,</span> <span class="n">ifft_cellwise</span>
+<span class="kn">import</span> <span class="nn">xarray</span> <span class="k">as</span> <span class="nn">xr</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="n">path_to_dataset</span><span class="p">)</span>
+<span class="n">datasetFFT</span> <span class="o">=</span> <span class="n">fft_cellwise</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+<span class="n">datasetiFFT</span> <span class="o">=</span> <span class="n">ifft_cellwise</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">fft_cellwise</span></code> will perform FFTs for all data_vars and for all dimensions if no further arguments are passed to the method.
+All dimensions that are transformed will be relabeled. A '_freq' is going to be appended to the dimension name.
+<code class="docutils literal notranslate"><span class="pre">ifft_cellwise</span></code> will perform inverse FFTs in the same manner as <code class="docutils literal notranslate"><span class="pre">fft_cellwise</span></code>. The names of the dimensions that have been transformed will be appended by '_ifft'.
+If a '_freq' as a substring is found in a dimension name, this will be removed.</p>
+</section>
+<section id="importing-as-definition-of-xarray">
+<h2>Importing as definition of xarray<a class="headerlink" href="#importing-as-definition-of-xarray" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">cuxrft.xarray</span>
+<span class="kn">import</span> <span class="nn">xarray</span> <span class="k">as</span> <span class="nn">xr</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="n">path_to_dataset</span><span class="p">)</span>
+<span class="n">datasetFFT</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">fft_cellwise</span><span class="p">()</span>
+<span class="n">datasetiFFT</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">ifft_cellwise</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The methods can now be used how mentioned in the paragraph above.</p>
+</section>
+<section id="arguments-that-can-be-passed-to-the-definitions">
+<h2>Arguments that can be passed to the definitions<a class="headerlink" href="#arguments-that-can-be-passed-to-the-definitions" title="Link to this heading">¶</a></h2>
+<section id="data">
+<h3><code class="docutils literal notranslate"><span class="pre">data</span></code><a class="headerlink" href="#data" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>xarray.Dataset</em> or <em>xarray.DataArray</em>,</div>
+<div class="line-block">
+<div class="line"><em>xarray.Dataset</em>:</div>
+<div class="line-block">
+<div class="line"><em>xarray.Dataset</em> containing the provided <code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code> and <code class="docutils literal notranslate"><span class="pre">data_vars</span></code>.</div>
+</div>
+<div class="line"><em>xarray.DataArray</em>:</div>
+<div class="line-block">
+<div class="line"><em>xarray.DataArray</em> containing the provided <code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code>. <code class="docutils literal notranslate"><span class="pre">data_vars</span></code> will be ignored.</div>
+</div>
+</div>
+</div>
+</section>
+<section id="chunks">
+<h3><code class="docutils literal notranslate"><span class="pre">chunks</span></code><a class="headerlink" href="#chunks" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>str</em> or <em>dict</em>,</div>
+<div class="line-block">
+<div class="line"><em>str</em>:</div>
+<div class="line-block">
+<div class="line">Must be <code class="docutils literal notranslate"><span class="pre">chunks='auto'</span></code>. Chunk size will be determined automatically using <code class="docutils literal notranslate"><span class="pre">maxNPSize</span></code>.</div>
+</div>
+<div class="line"><em>dict</em>:</div>
+<div class="line-block">
+<div class="line">Shall contain the name of the dimension(s) to chunk along as the key and the size as the value.</div>
+</div>
+<div class="line">Argument to define chunk size.</div>
+</div>
+</div>
+</section>
+<section id="fft-dims">
+<h3><code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code><a class="headerlink" href="#fft-dims" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>str</em>, <em>list</em> or <em>dict</em>,</div>
+<div class="line-block">
+<div class="line"><em>str</em> or <em>list</em>:</div>
+<div class="line-block">
+<div class="line">The dimension(s) to calculate the (i)FFT(s) along in data_var(s).</div>
+</div>
+<div class="line"><em>dict</em>:</div>
+<div class="line-block">
+<div class="line">The dimensions(s) to calculate the (i)FFT(s) along. Keys of <code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code> are used internally as <code class="docutils literal notranslate"><span class="pre">data_vars</span></code> and values of <code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code> as the dimensions to transform along.</div>
+<div class="line"><em>Str</em> and <em>list</em> as values allowed.</div>
+</div>
+<div class="line">Argument to define the dimension(s) to calculate the (i)FFT(s) along.</div>
+<div class="line">The returned <em>xarray.Dataset</em> or <em>xarray.DataArray</em> will contain these dimension(s) with the name(s) being prolonged by '_freq' - for FFT and by '_ifft' for iFFT.</div>
+<div class="line">If multiple data_vars are present in the <code class="docutils literal notranslate"><span class="pre">data</span></code> and the others are dependent on <code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code> and will not be transformed a new dimension will be created.</div>
+</div>
+</div>
+</section>
+<section id="data-vars">
+<h3><code class="docutils literal notranslate"><span class="pre">data_vars</span></code><a class="headerlink" href="#data-vars" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>str</em> or <em>list</em>,</div>
+<div class="line-block">
+<div class="line">The name(s) of the data_var(s) to calculate the (i)FFT(s) from. Will be ignored if <code class="docutils literal notranslate"><span class="pre">data</span></code> is a <em>xarray.DataArray</em>.</div>
+<div class="line">If no value is provided, all data_vars in <code class="docutils literal notranslate"><span class="pre">data</span></code> will be used. Will be ignored if <code class="docutils literal notranslate"><span class="pre">FFT_dims</span></code> is a <em>dict</em>.</div>
+</div>
+</div>
+</section>
+<section id="maxnpsize">
+<h3><code class="docutils literal notranslate"><span class="pre">maxNPSize</span></code><a class="headerlink" href="#maxnpsize" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>int</em>,</div>
+<div class="line-block">
+<div class="line">The maximal size of the numpy array the <code class="docutils literal notranslate"><span class="pre">data</span></code> will be chunked into internally. This depends on the used GPU and its memory.</div>
+<div class="line">The larger the GPU memory, the larger this number. If the (i)FFT crashes due to the lack of GPU memory try to decrease this value.</div>
+</div>
+</div>
+</section>
+<section id="delayed">
+<h3><code class="docutils literal notranslate"><span class="pre">delayed</span></code><a class="headerlink" href="#delayed" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>bool</em>,</div>
+<div class="line-block">
+<div class="line">Wherether the returned <em>xarray.Dataset</em> or <em>xarray.DataArray</em> should be made up by <em>dask.delayed</em> arrays.</div>
+<div class="line">The GPU(s) are going to be reserved from python until the computation has been executed.</div>
+</div>
+</div>
+</section>
+<section id="multiple-gpus">
+<h3><code class="docutils literal notranslate"><span class="pre">multiple_GPUs</span></code><a class="headerlink" href="#multiple-gpus" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>bool</em>,</div>
+<div class="line-block">
+<div class="line">If multiple GPUs should be used. Even if <code class="docutils literal notranslate"><span class="pre">GPUs</span></code> is a <em>list</em>, this flag needs to be set <code class="docutils literal notranslate"><span class="pre">multiple_GPUs=True</span></code> to use all of the GPUs provided in the <em>list</em>.</div>
+<div class="line">If <code class="docutils literal notranslate"><span class="pre">multiple_GPUs=True</span></code> and the argument <code class="docutils literal notranslate"><span class="pre">GPUs</span></code> is not set or gets only one GPU, all GPUs will be used.</div>
+<div class="line">This flag starts a controlling server that manages the access of the GPUs.</div>
+</div>
+</div>
+</section>
+<section id="gpus">
+<h3><code class="docutils literal notranslate"><span class="pre">GPUs</span></code><a class="headerlink" href="#gpus" title="Link to this heading">¶</a></h3>
+<div class="line-block">
+<div class="line"><em>list</em> or <em>int</em>,</div>
+<div class="line-block">
+<div class="line">Contains the index/indices of the GPU(s) to use.</div>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">cuxrft</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Usage</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#basics-and-scope">Basics and Scope</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#tutorial">Tutorial</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#importing-and-making-use-of-definitions">Importing and making use of definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#importing-as-definition-of-xarray">Importing as definition of xarray</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#arguments-that-can-be-passed-to-the-definitions">Arguments that can be passed to the definitions</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to cuxrft's documentation!</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2024, Tim Vogel.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 7.2.6</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 0.7.16</a>
+      
+      |
+      <a href="_sources/usage.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
