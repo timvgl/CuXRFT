@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: cuxrft
-Version: 0.0.1
+Version: 0.0.2
 Summary: Performs FFTs on xarrays by making use of cuda.
 Author-email: Tim Vogel <tim.vogel@physik.uni-kl.de>
 Project-URL: Homepage, https://github.com/timvgl/CuXRFT

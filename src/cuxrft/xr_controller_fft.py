@@ -339,8 +339,8 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=52441
                         The returned xarray.Dataset or xarray.DataArray will contain these dimension(s) with the name(s) being prolonged by "_freq".
                         If multiple data_vars are present in the data and the others are dependent on FFT_dims and will not be transformed a new dim will be created.
 
-        data_vars       : str or list, the name(s) of the data_var(s) to calculate the FFT from. Will be ignored if data is a xarray.DataArray. If no string is provided,
-                        all data_vars will be used. Will be ignored if FFT_dims is a dict.
+        data_vars       : str or list, the name(s) of the data_var(s) to calculate the FFT from. Will be ignored if data is a xarray.DataArray. If no string is,
+                        the first entry will be used. Will be ignored if FFT_dims is a dict.
 
         maxNPSize       : int, is the maximal size of the numpy array the data will be chunked into internally. This depends on the used GPU and its memory.
                         The larger the GPU memory, the larger this number. If the FFT crashes due to the lack of GPU memory try to decrease this value.
@@ -557,8 +557,8 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=5244
                         The returned xarray.Dataset or xarray.DataArray will contain these dimension(s) with the name(s) being prolonged by "_freq".
                         If multiple data_vars are present in the data and the others are dependent on FFT_dims and will not be transformed a new dim will be created.
 
-        data_vars       : str or list, the name(s) of the data_var(s) to calculate the iFFT from. Will be ignored if data is a xarray.DataArray. If no string is provided,
-                        all data_vars will be used. Will be ignored if FFT_dims is a dict.
+        data_vars       : str or list, the name(s) of the data_var(s) to calculate the iFFT from. Will be ignored if data is a xarray.DataArray. If no string is,
+                        the first entry will be used. Will be ignored if FFT_dims is a dict.
 
         maxNPSize       : int, is the maximal size of the numpy array the data will be chunked into internally. This depends on the used GPU and its memory.
                         The larger the GPU memory, the larger this number. If the iFFT crashes due to the lack of GPU memory try to decrease this value.
