@@ -9,7 +9,7 @@
 project = 'cuxrft'
 copyright = '2024, Tim Vogel'
 author = 'Tim Vogel'
-release = '15/02/2024'
+release = '0.0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
