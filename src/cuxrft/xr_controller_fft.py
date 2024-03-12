@@ -15,6 +15,7 @@ import concurrent.futures
 import sys
 from pathlib import Path
 import cupy
+from byte_converter import convertToBytesByUnit
 
 def castable_int(value):
     try:
@@ -22,6 +23,12 @@ def castable_int(value):
         return True
     except ValueError:
         False
+
+def try_cast_int(value):
+    try:
+        return int(value)
+    except ValueError:
+        return value
 
 def check_data_sufficient(data, FFT_dims, data_vars): 
     if ((not isinstance(data, xr.Dataset)) == (not isinstance(data, xr.DataArray))):
@@ -35,6 +42,23 @@ def check_data_sufficient(data, FFT_dims, data_vars):
         raise ValueError('Not all data_vars "' + str(data_vars) + '" found in ' + str(type(data)))
     elif (isinstance(FFT_dims, dict) and isinstance(data, xr.Dataset) and False in [False if data_var not in list(data.keys()) else True for data_var in list(FFT_dims.keys())]):
         raise ValueError('Not all data_vars "' + str(list(FFT_dims.keys())) + '" from FFT_dims dict found in ' + str(type(data)))
+
+def get_maximalMemoryGPUs(availableGPUs):
+    nvidiaGPUAnswer = run(['nvidia-smi', '--query-gpu=index,memory.total', '--format=csv'], stdout=PIPE).stdout.decode().split("\n")
+    if (isinstance(availableGPUs, list)):
+        return [GPU.split(', ')[1] for GPU in nvidiaGPUAnswer if try_cast_int(GPU.split(', ')[0]) in availableGPUs]
+    elif (isinstance(availableGPUs, str)):
+        return [GPU.split(', ')[1] for GPU in nvidiaGPUAnswer if castable_int(GPU.split(', ')[0])]
+    else:
+        raise ValueError('GPUs must either be list, or str with the value "all".')
+
+def get_smallestMemoryOfAllGPUs(availableGPUs):
+    memoryGPUs = get_maximalMemoryGPUs(availableGPUs)
+    smallest = convertToBytesByUnit(memoryGPUs[0])
+    for mem in memoryGPUs[1:]:
+        if (convertToBytesByUnit(mem) < smallest):
+            smallest = convertToBytesByUnit(mem)
+    return smallest
 
 def get_freeGPU(availableGPUs, filterList=['mumax3', 'mumax3me'], filterListCheckGPU=[], treshHoldGPUUsage=0.1):
     programsToFilterGPUs = [] + filterList
@@ -323,34 +347,37 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
         delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm), dtype=np.complex128, shape=out[sc].shape)
         return delayedObject
 
-def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=524419072, delayed=False, multiple_GPUs=False, GPUs=[0]):
+def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False):
     """
     Performs FFT along FFT_dim for data_var
         Parameters
         ----------
-        data            : xarray.Dataset or xarray.DataArray, xarray data containing the provided FFT_dims and data_vars name(s).
-                        If data is an xarray.DataArray data_var will be ignored.
+        data                                : xarray.Dataset or xarray.DataArray, xarray data containing the provided FFT_dims and data_vars name(s).
+                                            If data is an xarray.DataArray data_var will be ignored.
 
-        chunks          : str or dict, will split data into chunks. If chunks='auto' the chunk size will be determined automatically using maxNPSize.
-                        If chunks is a dict, the dict shall contain the name of the dim(s) to chunk along as the key and the size as the entry
+        chunks                              : str or dict, will split data into chunks. If chunks='auto' the chunk size will be determined automatically comparing the size of the numpy array
+                                            with the smallest available memory on the graphic card(s).
 
-        FFT_dims        : str or list or dict,  str and list: the dimension(s) to calculate the FFT(s) along in data_var(s) (if it is and xarray.Dataset).
-                                                dict: the dimensions(s) to calculate the FFT(s) along in the keys of FFT_dims and using the values as the dims to transform. Str and list as values allowed.
-                        The returned xarray.Dataset or xarray.DataArray will contain these dimension(s) with the name(s) being prolonged by "_freq".
-                        If multiple data_vars are present in the data and the others are dependent on FFT_dims and will not be transformed a new dim will be created.
+        FFT_dims                            : str or list or dict, str and list: the dimension(s) to calculate the FFT(s) along in data_var(s) (if it is and xarray.Dataset).
+                                                                           dict: the dimensions(s) to calculate the FFT(s) along in the keys of FFT_dims and using the values
+                                                                                  as the dims to transform. Str and list as values allowed.
+                                            The returned xarray.Dataset or xarray.DataArray will contain these dimension(s) with the name(s) being prolonged by "_freq".
+                                            If multiple data_vars are present in the data and the others are dependent on FFT_dims and will not be transformed a new dim will be created.
 
-        data_vars       : str or list, the name(s) of the data_var(s) to calculate the FFT from. Will be ignored if data is a xarray.DataArray. If no string is,
-                        the first entry will be used. Will be ignored if FFT_dims is a dict.
+        data_vars                           : str or list, the name(s) of the data_var(s) to calculate the FFT from. Will be ignored if data is a xarray.DataArray. If no string is,
+                                            the first entry will be used. Will be ignored if FFT_dims is a dict.
 
-        maxNPSize       : int, is the maximal size of the numpy array the data will be chunked into internally. This depends on the used GPU and its memory.
-                        The larger the GPU memory, the larger this number. If the FFT crashes due to the lack of GPU memory try to decrease this value.
         
-        delayed         : bool, wherether the returned dataset should be made up by dask.delayed arrays. The GPU(s) are going to be reserved from python until the computation has been executed.
+        delayed                             : bool, wherether the returned dataset should be made up by dask.delayed arrays. The GPU(s) are going to be reserved from python until the computation has been executed.
 
-        multiple_GPUs   : bool, if multiple GPUs should be used. Even uf GPUs is a list, this flag needs to be set true to use all of the GPUs provided in the list.
-                        This flag starts a controlling server that manages the access of the GPUs.
+        multiple_GPUs                       : bool, if multiple GPUs should be used. Even uf GPUs is a list, this flag needs to be set true to use all of the GPUs provided in the list.
+                                            This flag starts a controlling server that manages the access of the GPUs.
 
-        GPUs            : list or int, contains the index of the GPU(s) to use.
+        GPUs                                : list or int, contains the index of the GPU(s) to use.
+
+        keepGPUcontrollingServerRunning     : bool, wherether the GPU controlling server should continue to run, or not. Sometimes cuda does not closes itself properly.
+                                            By setting keepGPUcontrollingServerRunning=True this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
+                                            of this method.
 
         Returns
         -------
@@ -445,16 +472,21 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=52441
     if (multiple_GPUs == True):
         if (len(GPUs) == 1):
             GPUs = 'all'
-        executor = concurrent.futures.ProcessPoolExecutor()
-        GPUcontrollingServerThread = executor.submit(GPUcontrollingServer)
-        GPUServerStarted = False
-        while not GPUServerStarted:
-            try:
-                GPU_client({'checkHealth': 0})
-                GPUServerStarted = True
-            except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
-                GPUServerStarted = False
-            time.sleep(1)
+        try:
+            GPU_client({'checkHealth': 0})
+            GPUServerStarted = True
+        except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+            GPUServerStarted = False
+        if (GPUServerStarted == False):
+            executor = concurrent.futures.ProcessPoolExecutor()
+            GPUcontrollingServerThread = executor.submit(GPUcontrollingServer)
+            while not GPUServerStarted:
+                try:
+                    GPU_client({'checkHealth': 0})
+                    GPUServerStarted = True
+                except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+                    GPUServerStarted = False
+                time.sleep(1)
 
     dataTransposed = False
     #transform axis has to be the 0th axis
@@ -474,22 +506,23 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=52441
                 data[data_var] = data[data_var].transpose(*newDimOrder)
                 dataTransposed = True
             fftAxis = [dim for dim in data[data_var].dims].index(FFT_dim + '_freq')
-            out = from_array(np.zeros(tuple(data.dims[d] for d in data[data_var].dims), dtype=np.complex128))
+            out = dask.array.empty(shape=tuple(data.dims[d] for d in data[data_var].dims), dtype=np.complex128)
             chunksDict = {}
             if (chunksOrg == 'auto'):
+                memoryConsumption = out.itemsize*out.size
+                minimalMemoryAvailable = get_smallestMemoryOfAllGPUs(GPUs)
                 shape = list(out.shape)
-                size = math.prod(shape)
-                for dim in data.dims:
+                for dim in data[data_var].dims:
                     if (dim == FFT_dim + '_freq'):
                         continue
-                    while (size > maxNPSize/4):
+                    while (memoryConsumption > minimalMemoryAvailable / 3):
                         if (shape[list(data[data_var].dims).index(dim)]/ 2 > 1):
                             shape[list(data[data_var].dims).index(dim)] = int(shape[list(data[data_var].dims).index(dim)] / 2)
-                            size = math.prod(shape)
-                            if (size <= maxNPSize/4): 
-                                chunksDict[dim] = int(shape[list(data.dims).index(dim)])
+                            memoryConsumption = out.itemsize*math.prod(shape)
+                            if (memoryConsumption <= minimalMemoryAvailable/3): 
+                                chunksDict[dim] = int(shape[list(data[data_var].dims).index(dim)])
                         else:
-                            chunksDict[dim] = int(shape[list(data.dims).index(dim)]) 
+                            chunksDict[dim] = int(shape[list(data[data_var].dims).index(dim)]) 
                             break
                 if (chunksDict != {}):
                     print("Chunking with: " + str(chunksDict))
@@ -537,38 +570,43 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=52441
             data[data_var] = data[data_var].transpose(*(orgOrderDimsDataVars[data_vars.index(data_var)]))
     if (wasDataArray == True):
         data = data.to_dataarray('raw')
-    if (multiple_GPUs == True):
+    if (multiple_GPUs == True and keepGPUcontrollingServerRunning == False and delayed == False):
         GPU_client({'exit': 0}) 
     return data
 
-def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=524419072, delayed=False, multiple_GPUs=False, GPUs=[0]):
+def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False):
     """
     Performs iFFT along FFT_dim for data_var
         Parameters
         ----------
-        data            : xarray.Dataset or xarray.DataArray, xarray data containing the provided FFT_dims and data_vars name(s).
-                        If data is an xarray.DataArray data_var will be ignored.
+        data                                : xarray.Dataset or xarray.DataArray, xarray data containing the provided FFT_dims and data_vars name(s).
+                                            If data is an xarray.DataArray data_var will be ignored.
 
-        chunks          : str or dict, will split data into chunks. If chunks='auto' the chunk size will be determined automatically using maxNPSize.
-                        If chunks is a dict, the dict shall contain the name of the dim(s) to chunk along as the key and the size as the entry
+        chunks                              : str or dict, will split data into chunks. If chunks='auto' the chunk size will be determined automatically comparing the size of the numpy array
+                                            with the smallest available memory on the graphic card(s).
+                                            If chunks is a dict, the dict shall contain the name of the dim(s) to chunk along as the key and the size as the entry
 
-        FFT_dims        : str or list or dict,  str and list: the dimension(s) to calculate the iFFT(s) along in data_var(s) (if it is and xarray.Dataset).
-                                                dict: the dimensions(s) to calculate the iFFT(s) along in the keys of FFT_dims and using the values as the dims to transform. Str and list as values allowed.
-                        The returned xarray.Dataset or xarray.DataArray will contain these dimension(s) with the name(s) being prolonged by "_freq".
-                        If multiple data_vars are present in the data and the others are dependent on FFT_dims and will not be transformed a new dim will be created.
+        FFT_dims                            : str or list or dict,  str and list: the dimension(s) to calculate the iFFT(s) along in data_var(s) (if it is and xarray.Dataset).
+                                                                            dict: the dimensions(s) to calculate the iFFT(s) along in the keys of FFT_dims and using the values
+                                                                                  as the dims to transform. Str and list as values allowed.
+                                            The returned xarray.Dataset or xarray.DataArray will contain these dimension(s) with the name(s) being prolonged by "_freq".
+                                            If multiple data_vars are present in the data and the others are dependent on FFT_dims and will not be transformed a new dim will be created.
 
-        data_vars       : str or list, the name(s) of the data_var(s) to calculate the iFFT from. Will be ignored if data is a xarray.DataArray. If no string is,
-                        the first entry will be used. Will be ignored if FFT_dims is a dict.
+        data_vars                           : str or list, the name(s) of the data_var(s) to calculate the iFFT from. Will be ignored if data is a xarray.DataArray. If no string is,
+                                            the first entry will be used. Will be ignored if FFT_dims is a dict.
 
-        maxNPSize       : int, is the maximal size of the numpy array the data will be chunked into internally. This depends on the used GPU and its memory.
-                        The larger the GPU memory, the larger this number. If the iFFT crashes due to the lack of GPU memory try to decrease this value.
         
-        delayed         : bool, wherether the returned dataset should be made up by dask.delayed arrays. The GPU(s) are going to be reserved from python until the computation has been executed.
+        delayed                             : bool, wherether the returned dataset should be made up by dask.delayed arrays. The GPU(s) are going to be reserved from 
+                                            python until the computation has been executed.
 
-        multiple_GPUs   : bool, if multiple GPUs should be used. Even uf GPUs is a list, this flag needs to be set true to use all of the GPUs provided in the list.
-                        This flag starts a controlling server that manages the access of the GPUs.
+        multiple_GPUs                       : bool, if multiple GPUs should be used. Even uf GPUs is a list, this flag needs to be set true to use all of the GPUs provided in the list.
+                                            This flag starts a controlling server that manages the access of the GPUs.
 
-        GPUs            : list or int, contains the index of the GPU(s) to use.
+        GPUs                                : list or int, contains the index of the GPU(s) to use.
+
+        keepGPUcontrollingServerRunning     : bool, wherether the GPU controlling server should continue to run, or not. Sometimes cuda does not closes itself properly.
+                                            By setting keepGPUcontrollingServerRunning=True this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
+                                            of this method.
 
         Returns
         -------
@@ -661,16 +699,21 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=5244
     if (multiple_GPUs == True):
         if (len(GPUs) == 1):
             GPUs = 'all'
-        executor = concurrent.futures.ProcessPoolExecutor()
-        GPUcontrollingServerThread = executor.submit(GPUcontrollingServer)
-        GPUServerStarted = False
-        while not GPUServerStarted:
-            try:
-                GPU_client({'checkHealth': 0})
-                GPUServerStarted = True
-            except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
-                GPUServerStarted = False
-            time.sleep(1)
+        try:
+            GPU_client({'checkHealth': 0})
+            GPUServerStarted = True
+        except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+            GPUServerStarted = False
+        if (GPUServerStarted == False):
+            executor = concurrent.futures.ProcessPoolExecutor()
+            GPUcontrollingServerThread = executor.submit(GPUcontrollingServer)
+            while not GPUServerStarted:
+                try:
+                    GPU_client({'checkHealth': 0})
+                    GPUServerStarted = True
+                except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+                    GPUServerStarted = False
+                time.sleep(1)
     dataTransposed = False
     #transform axis has to be the 0th axis
     for data_var in data_vars:
@@ -689,22 +732,23 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=5244
                 data[data_var] = data[data_var].transpose(*newDimOrder)
                 dataTransposed = True
             fftAxis = [dim for dim in data[data_var].dims].index(FFT_dim + '_freq')
-            out = from_array(np.zeros(tuple(data.dims[d] for d in data[data_var].dims), dtype=np.complex128))
+            out = dask.array.empty(shape=tuple(data.dims[d] for d in data[data_var].dims), dtype=np.complex128)
             chunksDict = {}
             if (chunksOrg == 'auto'):
+                memoryConsumption = out.itemsize*out.size
+                minimalMemoryAvailable = get_smallestMemoryOfAllGPUs(GPUs)
                 shape = list(out.shape)
-                size = math.prod(shape)
-                for dim in data.dims:
+                for dim in data[data_var].dims:
                     if (dim == FFT_dim + '_freq'):
                         continue
-                    while (size > maxNPSize/4):
-                        if (shape[list(data[data_var].dims).index(dim)]/ 2 > 1):
+                    while (memoryConsumption > minimalMemoryAvailable / 3):
+                        if (shape[list(data[data_var].dims).index(dim)] / 2 > 1):
                             shape[list(data[data_var].dims).index(dim)] = int(shape[list(data[data_var].dims).index(dim)] / 2)
-                            size = math.prod(shape)
-                            if (size <= maxNPSize/4): 
-                                chunksDict[dim] = int(shape[list(data.dims).index(dim)])
+                            memoryConsumption = out.itemsize*math.prod(shape)
+                            if (memoryConsumption <= minimalMemoryAvailable / 3): 
+                                chunksDict[dim] = int(shape[list(data[data_var].dims).index(dim)])
                         else:
-                            chunksDict[dim] = int(shape[list(data.dims).index(dim)]) 
+                            chunksDict[dim] = int(shape[list(data[data_var].dims).index(dim)]) 
                             break
                 if (chunksDict != {}):
                     print("Chunking with: " + str(chunksDict))
@@ -762,15 +806,12 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', maxNPSize=5244
                 data = data.rename({dim: dim.replace('_freq_freq', '').replace('_freq', '_ifft')})
     if (wasDataArray == True):
         data = data.to_dataarray('raw')
-    if (multiple_GPUs == True):
+    if (multiple_GPUs == True and keepGPUcontrollingServerRunning == False and delayed == False):
         GPU_client({'exit': 0}) 
     return data
 
-
-xr.Dataset.fft_cellwise = fft_cellwise
-xr.DataArray.fft_cellwise = fft_cellwise
-xr.Dataset.ifft_cellwise = ifft_cellwise
-xr.DataArray.ifft_cellwise = ifft_cellwise
+def closeGPUController():
+    GPU_client({'exit': 0}) 
 
 if __name__ == '__main__':
     """for parent in parent_nodes:
@@ -782,5 +823,13 @@ if __name__ == '__main__':
     #print(datasetfft)
     datasetifft = ifft_cellwise(datasetfft, FFT_dims='t_freq', data_vars=['raw'])
     print(datasetifft)"""
-    print(xr.open_dataset('data.nc'))
-    print(ifft_cellwise(fft_cellwise(xr.open_dataset('data.nc'), chunks={'y': 12})))
+    print(xr.open_dataset(r"D:\tvo\final_nc_files\11-12-2023_18-20-45_script_whispering_gallery_mode_vortex_displacement_higher_space_res.nc").isel({'x': slice(256, 768), 'y': slice(256, 768), 't': slice(0, 1000)}))
+    print(ifft_cellwise(fft_cellwise(xr.open_dataset(r"D:\tvo\final_nc_files\11-12-2023_18-20-45_script_whispering_gallery_mode_vortex_displacement_higher_space_res.nc").isel({'x': slice(256, 768), 'y': slice(256, 768), 't': slice(0, 1000)}), chunks='auto', FFT_dims='t', multiple_GPUs=True, keepGPUcontrollingServerRunning=True), chunks='auto', FFT_dims='t_freq', multiple_GPUs=True))
+else:
+    try:
+        xr.Dataset.fft_cellwise = fft_cellwise
+        xr.DataArray.fft_cellwise = fft_cellwise
+        xr.Dataset.ifft_cellwise = ifft_cellwise
+        xr.DataArray.ifft_cellwise = ifft_cellwise
+    except AttributeError:
+        print('Could not provide cuxrft methods as internal functions of xarray.')

@@ -69,7 +69,7 @@ Arguments that can be passed to the definitions
 
 | *str* or *dict*,
 |   *str*:
-|           Must be ``chunks='auto'``. Chunk size will be determined automatically using ``maxNPSize``.
+|           Must be ``chunks='auto'``. Chunk size will be determined automatically using the size of the numpy array and the smallest amount of memory of all gaphic cards supplied.
 |   *dict*:
 |           Shall contain the name of the dimension(s) to chunk along as the key and the size as the value.
 |   Argument to define chunk size. 
@@ -94,12 +94,6 @@ Arguments that can be passed to the definitions
 |   The name(s) of the data_var(s) to calculate the (i)FFT(s) from. Will be ignored if ``data`` is a *xarray.DataArray*.
 |   If no value is provided, all data_vars in ``data`` will be used. Will be ignored if ``FFT_dims`` is a *dict*.
 
-``maxNPSize``
-"""""""""""""
-
-| *int*,
-|   The maximal size of the numpy array the ``data`` will be chunked into internally. This depends on the used GPU and its memory.
-|   The larger the GPU memory, the larger this number. If the (i)FFT crashes due to the lack of GPU memory try to decrease this value.
         
 ``delayed``
 """""""""""
@@ -121,4 +115,11 @@ Arguments that can be passed to the definitions
 
 | *list* or *int*,
 |   Contains the index/indices of the GPU(s) to use.
+
+``keepGPUcontrollingServerRunning``
+"""""""""""""""""""""""""""""""""""
+| *bool*,
+|   wherether the GPU controlling server should continue to run, or not. Sometimes cuda does not closes itself properly.
+|   By setting keepGPUcontrollingServerRunning=True this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
+|   of this method.
 

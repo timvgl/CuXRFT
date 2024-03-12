@@ -2,6 +2,7 @@ LICENSE
 README.rst
 pyproject.toml
 src/cuxrft/__init__.py
+src/cuxrft/byte_converter.py
 src/cuxrft/xarray.py
 src/cuxrft/xr_controller_fft.py
 src/cuxrft.egg-info/PKG-INFO
