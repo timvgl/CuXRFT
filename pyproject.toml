@@ -3,11 +3,11 @@ requires = ["setuptools>=61.0", "xarray>=2023.1.0", "numpy>=1.24.4", "dask>=2023
 build-backend = "setuptools.build_meta"
 [project]
 name = "cuxrft"
-version = "0.0.5"
+version = "0.0.7"
 authors = [
   { name="Tim Vogel", email="tim.vogel@physik.uni-kl.de" },
 ]
-description = "Performs FFTs on xarrays by making use of cuda. Chunking and multiple GPUs in parallel supported."
+description = "Performs FFTs on xarray by making use of cuda. Chunking and multiple GPUs in parallel supported."
 readme = "README.rst"
 requires-python = ">=3.8"
 classifiers = [

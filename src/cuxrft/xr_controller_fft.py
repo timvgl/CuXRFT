@@ -15,7 +15,7 @@ import concurrent.futures
 import sys
 from pathlib import Path
 import cupy
-from byte_converter import convertToBytesByUnit
+from cuxrft.byte_converter import convertToBytesByUnit
 
 def castable_int(value):
     try:
@@ -556,7 +556,7 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
                     rechunkDict[list(data[data_var].dims).index(key)] = chunks[key]
             cache = cupy.fft.config.get_plan_cache() 
             cache.set_size(0)
-            out = dask.array.rechunk(sel_chunk(data, chunks, out, data_var, fftAxis, "forward", useGPU=GPUs, multiple_GPUs=multiple_GPUs), rechunkDict)
+            out = dask.array.rechunk(dask.array.squeeze(sel_chunk(data, chunks, out, data_var, fftAxis, "forward", useGPU=GPUs, multiple_GPUs=multiple_GPUs)), rechunkDict)
             if (delayed == False):
                 print('Computing FFT in ' + data_var + ' along ' + FFT_dim)
                 out = out.compute()
@@ -783,7 +783,7 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
 
             cache = cupy.fft.config.get_plan_cache() 
             cache.set_size(0)
-            out = dask.array.rechunk(sel_chunk(data, chunks, out, data_var, fftAxis, "inverse", useGPU=GPUs, multiple_GPUs=multiple_GPUs), rechunkDict)
+            out = dask.array.rechunk(dask.array.squeeze(sel_chunk(data, chunks, out, data_var, fftAxis, "inverse", useGPU=GPUs, multiple_GPUs=multiple_GPUs)), rechunkDict)
             if (delayed == False):
                 print('Computing iFFT in ' + data_var + ' along ' + FFT_dim)
                 out = out.compute()
@@ -814,17 +814,7 @@ def closeGPUController():
     GPU_client({'exit': 0}) 
 
 if __name__ == '__main__':
-    """for parent in parent_nodes:
-        xr_file = parent.get_file("data.nc")
-        xr_file.retrieve()
-    dataset = xr.open_dataset(xr_file.get_path())
-    print(dataset.load())
-    datasetfft = fft_cellwise(dataset, FFT_dims='t', data_vars=['raw'])
-    #print(datasetfft)
-    datasetifft = ifft_cellwise(datasetfft, FFT_dims='t_freq', data_vars=['raw'])
-    print(datasetifft)"""
-    print(xr.open_dataset(r"D:\tvo\final_nc_files\11-12-2023_18-20-45_script_whispering_gallery_mode_vortex_displacement_higher_space_res.nc").isel({'x': slice(256, 768), 'y': slice(256, 768), 't': slice(0, 1000)}))
-    print(ifft_cellwise(fft_cellwise(xr.open_dataset(r"D:\tvo\final_nc_files\11-12-2023_18-20-45_script_whispering_gallery_mode_vortex_displacement_higher_space_res.nc").isel({'x': slice(256, 768), 'y': slice(256, 768), 't': slice(0, 1000)}), chunks='auto', FFT_dims='t', multiple_GPUs=True, keepGPUcontrollingServerRunning=True), chunks='auto', FFT_dims='t_freq', multiple_GPUs=True))
+    pass
 else:
     try:
         xr.Dataset.fft_cellwise = fft_cellwise
