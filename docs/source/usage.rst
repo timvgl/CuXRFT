@@ -119,7 +119,20 @@ Arguments that can be passed to the definitions
 ``keepGPUcontrollingServerRunning``
 """""""""""""""""""""""""""""""""""
 | *bool*,
-|   wherether the GPU controlling server should continue to run, or not. Sometimes cuda does not closes itself properly.
-|   By setting keepGPUcontrollingServerRunning=True this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
-|   of this method.
+|   Whether the GPU controlling server should continue to run, or not. Sometimes cuda does not closes itself properly.
+|   By setting ``keepGPUcontrollingServerRunning=True`` this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
+|   of this method. This flag is only relevant, if ``multiple_GPUs=True``. Otherwise no GPU controlling server is going to be started.
 
+Further defs:
+-------------
+
+``closeGPUController()``
+""""""""""""""""""""""""
+
+|   Closes the GPU controlling server, after making use of ``keepGPUcontrollingServerRunning=True`` or ``delayed=True``, when last operation that could require to calculate a chunk is done.
+
+.. code-block:: python
+
+   datasetFFT = fft_cellwise(dataset, delayed=True)
+   someArbitraryMethods(datasetFFT)
+   closeGPUController()
