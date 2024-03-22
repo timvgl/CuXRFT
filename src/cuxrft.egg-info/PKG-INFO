@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: cuxrft
-Version: 0.0.7
+Version: 0.0.10
 Summary: Performs FFTs on xarray by making use of cuda. Chunking and multiple GPUs in parallel supported.
 Author-email: Tim Vogel <tim.vogel@physik.uni-kl.de>
 Project-URL: Homepage, https://cuxrft.readthedocs.io/en/latest/

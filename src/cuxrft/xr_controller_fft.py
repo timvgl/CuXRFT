@@ -16,6 +16,9 @@ import sys
 from pathlib import Path
 import cupy
 from cuxrft.byte_converter import convertToBytesByUnit
+from concurrent.futures._base import TimeoutError
+from copy import deepcopy
+
 
 def castable_int(value):
     try:
@@ -332,7 +335,7 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
                 # cp.fft.config.show_plan_cache_info()
                 #print("Current gpu memory usage: %s / %s" % (mempool.used_bytes()*1e-9, mempool.total_bytes()*1e-9))
                 if (fftDirection.lower() == "forward"):
-                    fft_d = cupy.fft.fft(fft, axis=fftAxis, norm=fftNorm) 
+                    fft_d = cupy.fft.fftshift(cupy.fft.fft(fft, axis=fftAxis, norm=fftNorm), axes=fftAxis)
                 elif (fftDirection.lower() == "inverse"):
                     fft_d = cupy.fft.ifft(fft, axis=fftAxis, norm=fftNorm) 
                 else:
@@ -344,7 +347,10 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
                     time.sleep(3)
                     GPU_client({'freeGPU': GPU_avail['useGPU']})
             return fftReturn
-        delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm), dtype=np.complex128, shape=out[sc].shape)
+        if (sc is not None):
+            delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm), dtype=np.complex128, shape=out[sc].shape)
+        else:
+            delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm), dtype=np.complex128, shape=out.shape)
         return delayedObject
 
 def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False):
@@ -470,24 +476,23 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
     mempool = cupy.get_default_memory_pool()
     pinned_mempool = cupy.get_default_pinned_memory_pool()
     if (multiple_GPUs == True):
+        executor = concurrent.futures.ProcessPoolExecutor()
         if (len(GPUs) == 1):
             GPUs = 'all'
         try:
-            GPU_client({'checkHealth': 0})
+            executor.submit(GPU_client, {'checkHealth': 0}).result(timeout=3)
             GPUServerStarted = True
-        except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+        except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError, TimeoutError):
             GPUServerStarted = False
         if (GPUServerStarted == False):
-            executor = concurrent.futures.ProcessPoolExecutor()
             GPUcontrollingServerThread = executor.submit(GPUcontrollingServer)
             while not GPUServerStarted:
                 try:
-                    GPU_client({'checkHealth': 0})
+                    executor.submit(GPU_client, {'checkHealth': 0}).result(timeout=3)
                     GPUServerStarted = True
-                except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+                except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError, TimeoutError):
                     GPUServerStarted = False
                 time.sleep(1)
-
     dataTransposed = False
     #transform axis has to be the 0th axis
     for data_var in data_vars:
@@ -524,13 +529,28 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
                         else:
                             chunksDict[dim] = int(shape[list(data[data_var].dims).index(dim)]) 
                             break
+                chunksPrint = deepcopy(chunksDict)
+                for key in chunksDict.keys():
+                    if key in FFT_dimsFlatten:
+                        if (key + '_freq' not in data[data_var].dims):
+                            del chunksDict[key]
+                            del chunksPrint[key]
+                        else:
+                            chunksDict[key + '_freq'] = chunksDict.pop(key)
+                    else:
+                        if (key not in data[data_var].dims):
+                            del chunksDict[key]
+                            del chunksPrint[key]
+                    if (key == FFT_dim):
+                        del chunksDict[key + '_freq']
+                        del chunksPrint[key]
                 if (chunksDict != {}):
-                    print("Chunking with: " + str(chunksDict))
+                    print("Chunking with: " + str(chunksPrint))
                 chunks = chunksDict
+                
             else:
                 if (not isinstance(chunksOrg, dict)):
                     raise ValueError('chunks must either be dict or str.')
-                from copy import deepcopy
                 chunks = deepcopy(chunksOrg)
                 chunksPrint = deepcopy(chunksOrg)
                 for key in chunksOrg.keys():
@@ -697,21 +717,21 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
     mempool = cupy.get_default_memory_pool()
     pinned_mempool = cupy.get_default_pinned_memory_pool()
     if (multiple_GPUs == True):
+        executor = concurrent.futures.ProcessPoolExecutor()
         if (len(GPUs) == 1):
             GPUs = 'all'
         try:
-            GPU_client({'checkHealth': 0})
+            executor.submit(GPU_client, {'checkHealth': 0}).result(timeout=3)
             GPUServerStarted = True
-        except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+        except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError, TimeoutError):
             GPUServerStarted = False
         if (GPUServerStarted == False):
-            executor = concurrent.futures.ProcessPoolExecutor()
             GPUcontrollingServerThread = executor.submit(GPUcontrollingServer)
             while not GPUServerStarted:
                 try:
-                    GPU_client({'checkHealth': 0})
+                    executor.submit(GPU_client, {'checkHealth': 0}).result(timeout=3)
                     GPUServerStarted = True
-                except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError):
+                except (ConnectionResetError, ConnectionRefusedError, FileNotFoundError, TimeoutError):
                     GPUServerStarted = False
                 time.sleep(1)
     dataTransposed = False
