@@ -252,7 +252,7 @@ def sel_lengthOne(dataset, data_var):
     dataset[data_var] = dataset[data_var].squeeze()
     return dataset
 
-def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fftNorm=None, chunkedDims={}, useGPU=0, sc=None, multiple_GPUs=False):
+def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fftNorm=None, chunkedDims={}, useGPU=0, sc=None, multiple_GPUs=False, FFTOrderCoords={}):
     if (chunkedDims.keys() != chunks.keys()):
         for key in chunks.keys():
             if (key in chunkedDims):
@@ -305,7 +305,7 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
             return out[sc]
     else:
         @dask.delayed
-        def calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm):
+        def calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm, FFTOrderCoords):
             GPU_avail = {}
             if (multiple_GPUs == False):
                 if (isinstance(useGPU, int)):
@@ -331,12 +331,20 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
                         GPU_avail = GPU_client({'requestGPU': useGPU})
                 print('Executing on GPU ' + str(GPU_avail['useGPU']))
             with cupy.cuda.Device(GPU_avail['useGPU']):
-                fft = cupy.array(data[resultDim].values)
                 # cp.fft.config.show_plan_cache_info()
                 #print("Current gpu memory usage: %s / %s" % (mempool.used_bytes()*1e-9, mempool.total_bytes()*1e-9))
                 if (fftDirection.lower() == "forward"):
+                    fft = cupy.array(data[resultDim].values)
                     fft_d = cupy.fft.fftshift(cupy.fft.fft(fft, axis=fftAxis, norm=fftNorm), axes=fftAxis)
                 elif (fftDirection.lower() == "inverse"):
+                    tupleSelCoordOrder = FFTOrderCoords[list(data[resultDim].dims)[fftAxis][:-5]]
+                    if (tupleSelCoordOrder[0] == True and tupleSelCoordOrder[1] == True and tupleSelCoordOrder[2] == True and tupleSelCoordOrder[3] == True):
+                        fft = cupy.array(data[resultDim].values)
+                    elif (tupleSelCoordOrder[0] == True and tupleSelCoordOrder[1] == True and tupleSelCoordOrder[2] == False and tupleSelCoordOrder[3] == False):
+                        print('Reordering data ...')
+                        fft = cupy.concatenate((cupy.array(data[resultDim].values[int(data.coords[list(data[resultDim].dims)[fftAxis]].size / 2):]), cupy.array(data[resultDim].values[:int(data.coords[list(data[resultDim].dims)[fftAxis]].size / 2)])))
+                    else:
+                        raise TypeError('Frequencies must either be from 0 until +fmax; -fmax until 0 or from -fmax until fmax.')
                     fft_d = cupy.fft.ifft(fft, axis=fftAxis, norm=fftNorm) 
                 else:
                     raise ValueError("No proper direction provided.")
@@ -348,9 +356,9 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
                     GPU_client({'freeGPU': GPU_avail['useGPU']})
             return fftReturn
         if (sc is not None):
-            delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm), dtype=np.complex128, shape=out[sc].shape)
+            delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm, FFTOrderCoords), dtype=np.complex128, shape=out[sc].shape)
         else:
-            delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm), dtype=np.complex128, shape=out.shape)
+            delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm, FFTOrderCoords), dtype=np.complex128, shape=out.shape)
         return delayedObject
 
 def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False):
@@ -677,9 +685,17 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
     FFT_dimsFlatten = FFT_dims
     if (isinstance(FFT_dimsFlatten, dict)):
         FFT_dimsFlatten = np.unique(sum(list(FFT_dimsFlatten.values()), [])).tolist()
+    FFTOrderCoords = {}
     for FFT_dim in FFT_dimsFlatten:
         d_dim = float(np.mean(np.diff(data.coords[FFT_dim].to_numpy())))
-        fft_freq = cupy.fft.rfftfreq(2*(data.dims[FFT_dim]-1), d_dim).get()
+        fft_freq = cupy.fft.rfftfreq(2*(data.dims[FFT_dim]-1), d_dim/2).get()
+        primArray = cupy.diff(data.coords[FFT_dim][:int(data.coords[FFT_dim].size / 2)])
+        secArray = cupy.diff(data.coords[FFT_dim][int(data.coords[FFT_dim].size / 2):])
+        primPartMonotonicIncreasing = cupy.all(primArray >= 0).__bool__()
+        secPartMonotonicIncreasing = cupy.all(secArray >= 0).__bool__()
+        primStartPos = (data.coords[FFT_dim][1] > 0).__bool__()
+        secStartNeg = (data.coords[FFT_dim][int(data.coords[FFT_dim].size / 2)+2] < 0).__bool__()
+        FFTOrderCoords[FFT_dim] = (primPartMonotonicIncreasing, secPartMonotonicIncreasing, primStartPos, secStartNeg)
         if ((data.dims[FFT_dim] % 2) != 0):
             fft_freq[:-1]
         if (isinstance(data, xr.Dataset)):
@@ -803,7 +819,7 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
 
             cache = cupy.fft.config.get_plan_cache() 
             cache.set_size(0)
-            out = dask.array.rechunk(dask.array.squeeze(sel_chunk(data, chunks, out, data_var, fftAxis, "inverse", useGPU=GPUs, multiple_GPUs=multiple_GPUs)), rechunkDict)
+            out = dask.array.rechunk(dask.array.squeeze(sel_chunk(data, chunks, out, data_var, fftAxis, "inverse", useGPU=GPUs, multiple_GPUs=multiple_GPUs, FFTOrderCoords=FFTOrderCoords)), rechunkDict)
             if (delayed == False):
                 print('Computing iFFT in ' + data_var + ' along ' + FFT_dim)
                 out = out.compute()
