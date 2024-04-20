@@ -127,7 +127,7 @@ Arguments that can be passed to the definitions
 """""""""""""""
 
 | *dict*,
-|   Selects data in the same manner as xarray, as soon as FFT of the dim is done. Key must be the result dim of an FFT dim (*_freq).
+|   Selects data in the same manner as xarray, as soon as FFT of the dim is done. Key must be the result dim of an FFT dim (*_freq). Speeds up FFTs after sel and isel are done.
 
 Further defs:
 -------------
