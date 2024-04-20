@@ -341,10 +341,14 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
                     if (tupleSelCoordOrder[0] == True and tupleSelCoordOrder[1] == True and tupleSelCoordOrder[2] == True and tupleSelCoordOrder[3] == True):
                         fft = cupy.array(data[resultDim].values)
                     elif (tupleSelCoordOrder[0] == True and tupleSelCoordOrder[1] == True and tupleSelCoordOrder[2] == False and tupleSelCoordOrder[3] == False):
-                        print('Reordering data ...')
+                        print('Reordering data by making use of coords ...')
                         fft = cupy.concatenate((cupy.array(data[resultDim].values[int(data.coords[list(data[resultDim].dims)[fftAxis]].size / 2):]), cupy.array(data[resultDim].values[:int(data.coords[list(data[resultDim].dims)[fftAxis]].size / 2)])))
                     else:
-                        raise TypeError('Frequencies must either be from 0 until +fmax; -fmax until 0 or from -fmax until fmax.')
+                        print('Reordering data by making use of coords ...')
+                        dataCupy = cupy.array(data[resultDim].values)
+                        dataSortArray = cupy.argsort(cupy.array(data.coords[list(data[resultDim].dims)[fftAxis]]))
+                        dataCupy = dataCupy[dataSortArray]
+                        fft = cupy.concatenate((dataCupy[int(data.coords[list(data[resultDim].dims)[fftAxis]].size / 2):],  dataCupy[:int(data.coords[list(data[resultDim].dims)[fftAxis]].size / 2)]))
                     fft_d = cupy.fft.ifft(fft, axis=fftAxis, norm=fftNorm) 
                 else:
                     raise ValueError("No proper direction provided.")
@@ -361,7 +365,7 @@ def sel_chunk(data, chunks, out, resultDim, fftAxis, fftDirection="forward", fft
             delayedObject = from_delayed(calcFFT(data, resultDim, fftDirection, fftAxis, fftNorm, FFTOrderCoords), dtype=np.complex128, shape=out.shape)
         return delayedObject
 
-def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False):
+def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False, sel=None, isel=None):
     """
     Performs FFT along FFT_dim for data_var
         Parameters
@@ -434,6 +438,22 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
             FFT_dims[data_var] = list(dataTmp[data_var].dims)
     elif (isinstance(FFT_dims, str)):
         FFT_dims = [FFT_dims]
+
+    if (isel != None and not isinstance(isel, dict) or sel != None and not isinstance(sel, dict)):
+        raise ValueError('isel and sel arg has to be dict.')
+    if (isinstance(isel, dict) or isinstance(sel, dict)):
+        if (isinstance(FFT_dims, list)):
+            FFT_dimsFreq = [dim + '_freq' for dim in FFT_dims]
+        else:
+            FFT_dimsFreq = [dim + '_freq' for dim in FFT_dims.values()]
+        if (isinstance(isel, dict)):
+            for key in isel.keys():
+                if key not in FFT_dimsFreq:
+                    raise ValueError('Keys in isel must be a dim along which a FFT is performed.')
+        if (isinstance(sel, dict)):
+            for key in sel.keys():
+                if key not in FFT_dimsFreq:
+                    raise ValueError('Keys in sel must be a dim along which a FFT is performed.')
     
     check_data_sufficient(data, FFT_dims, data_vars)
     chunksOrg = chunks
@@ -589,12 +609,24 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
                 print('Computing FFT in ' + data_var + ' along ' + FFT_dim)
                 out = out.compute()
             data = data.update({data_var: (data[data_var].dims, out)})
+            if (delayed == False):
+                if (isel != None and FFT_dim + '_freq' in isel):
+                    data[data_var] = data[data_var].isel({FFT_dim + '_freq': isel[FFT_dim + '_freq']})
+                if (sel != None and FFT_dim + '_freq' in sel):
+                    data[data_var] = data[data_var].sel({FFT_dim + '_freq': sel[FFT_dim + '_freq']}, method='nearest')
+
     for data_var in data_vars:
         dataVarIndex = data_vars.index(data_var)
         for dim in dimsLengthOne[dataVarIndex]:
             data[data_var] = data[data_var].expand_dims(dim, posOfDimsLengthOne[dataVarIndex][dimsLengthOne[dataVarIndex].index(dim)]).assign_coords({dim: [coordsLengthOne[dataVarIndex][dimsLengthOne[dataVarIndex].index(dim)]]})
     if (dataTransposed == True):
         for data_var in data_vars:
+            if (isel != None or sel != None):
+                tmpDimList = orgOrderDimsDataVars[data_vars.index(data_var)]
+                for dim in orgOrderDimsDataVars[data_vars.index(data_var)]:
+                    if dim not in data[data_var].dims:
+                        tmpDimList.remove(dim)
+                orgOrderDimsDataVars[data_vars.index(data_var)] = tmpDimList
             data[data_var] = data[data_var].transpose(*(orgOrderDimsDataVars[data_vars.index(data_var)]))
     if (wasDataArray == True):
         data = data.to_dataarray('raw')
@@ -602,7 +634,7 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
         GPU_client({'exit': 0}) 
     return data
 
-def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False):
+def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, multiple_GPUs=False, GPUs=[0], keepGPUcontrollingServerRunning=False, sel=None, isel=None):
     """
     Performs iFFT along FFT_dim for data_var
         Parameters
@@ -635,6 +667,8 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
         keepGPUcontrollingServerRunning     : bool, wherether the GPU controlling server should continue to run, or not. Sometimes cuda does not closes itself properly.
                                             By setting keepGPUcontrollingServerRunning=True this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
                                             of this method.
+
+        sel/isel                            : dict, selects data in the same manner as xarray, as soon as FFT of the dim is done. Key must be the result dim of an FFT dim (*_freq).
 
         Returns
         -------
@@ -677,6 +711,22 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
             FFT_dims[data_var] = list(dataTmp[data_var].dims)
     elif (isinstance(FFT_dims, str)):
         FFT_dims = [FFT_dims]
+
+    if (isel != None and not isinstance(isel, dict) or sel != None and not isinstance(sel, dict)):
+        raise ValueError('isel and sel arg has to be dict.')
+    if (isinstance(isel, dict) or isinstance(sel, dict)):
+        if (isinstance(FFT_dims, list)):
+            FFT_dimsFreq = [dim + '_freq' for dim in FFT_dims]
+        else:
+            FFT_dimsFreq = [dim + '_freq' for dim in FFT_dims.values()]
+        if (isinstance(isel, dict)):
+            for key in isel.keys():
+                if key not in FFT_dimsFreq:
+                    raise ValueError('Keys in isel must be a dim along which a FFT is performed.')
+        if (isinstance(sel, dict)):
+            for key in sel.keys():
+                if key not in FFT_dimsFreq:
+                    raise ValueError('Keys in sel must be a dim along which a FFT is performed.')
     
     check_data_sufficient(data, FFT_dims, data_vars)
     chunksOrg = chunks
@@ -824,12 +874,23 @@ def ifft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False,
                 print('Computing iFFT in ' + data_var + ' along ' + FFT_dim)
                 out = out.compute()
             data = data.update({data_var: (data[data_var].dims, out)})
+            if (delayed == False):
+                if (isel != None and FFT_dim + '_freq' in isel):
+                    data = data.isel({FFT_dim + '_freq': isel[FFT_dim + '_freq']})
+                if (sel != None and FFT_dim + '_freq' in sel):
+                    data = data.sel({FFT_dim + '_freq': sel[FFT_dim + '_freq']}, method='nearest')
     for data_var in data_vars:
         dataVarIndex = data_vars.index(data_var)
         for dim in dimsLengthOne[dataVarIndex]:
             data[data_var] = data[data_var].expand_dims(dim, posOfDimsLengthOne[dataVarIndex][dimsLengthOne[dataVarIndex].index(dim)]).assign_coords({dim: [coordsLengthOne[dataVarIndex][dimsLengthOne[dataVarIndex].index(dim)]]})
     if (dataTransposed == True):
         for data_var in data_vars:
+            if (isel != None or sel != None):
+                tmpDimList = orgOrderDimsDataVars[data_vars.index(data_var)]
+                for dim in orgOrderDimsDataVars[data_vars.index(data_var)]:
+                    if dim not in data[data_var].dims:
+                        tmpDimList.remove(dim)
+                orgOrderDimsDataVars[data_vars.index(data_var)] = tmpDimList
             data[data_var] = data[data_var].transpose(*(orgOrderDimsDataVars[data_vars.index(data_var)]))
     for dim in data.dims:
         if ('_freq' in dim):
