@@ -397,6 +397,8 @@ def fft_cellwise(data, chunks='auto', FFT_dims='', data_vars='', delayed=False, 
                                             By setting keepGPUcontrollingServerRunning=True this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
                                             of this method.
 
+        sel/isel                            : dict, selects data in the same manner as xarray, as soon as FFT of the dim is done. Key must be the result dim of an FFT dim (*_freq).
+
         Returns
         -------
         Dataset, or DataArray
