@@ -123,6 +123,12 @@ Arguments that can be passed to the definitions
 |   By setting ``keepGPUcontrollingServerRunning=True`` this can be resolved for the case that multiple FFTs are supposed to be computed during different calls
 |   of this method. This flag is only relevant, if ``multiple_GPUs=True``. Otherwise no GPU controlling server is going to be started.
 
+``sel or isel``
+"""""""""""""""
+
+| *dict*,
+|   Selects data in the same manner as xarray, as soon as FFT of the dim is done. Key must be the result dim of an FFT dim (*_freq).
+
 Further defs:
 -------------
 
